@@ -4,126 +4,149 @@
  * This is the first thing users see of our App, at the '/' route
  */
 
-import React, { useEffect, memo } from 'react';
+import React, { memo } from 'react';
 import PropTypes from 'prop-types';
-import { Helmet } from 'react-helmet';
-import { FormattedMessage } from 'react-intl';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
 import { createStructuredSelector } from 'reselect';
+import { Map } from 'immutable';
+import styled from 'styled-components';
 
-import { useInjectReducer } from 'utils/injectReducer';
-import { useInjectSaga } from 'utils/injectSaga';
+import injectReducer from 'utils/injectReducer';
+import injectSaga from 'utils/injectSaga';
 import {
-  makeSelectRepos,
-  makeSelectLoading,
-  makeSelectError,
-} from 'containers/App/selectors';
-import H2 from 'components/H2';
-import ReposList from 'components/ReposList';
-import AtPrefix from './AtPrefix';
-import CenteredSection from './CenteredSection';
-import Form from './Form';
-import Input from './Input';
-import Section from './Section';
-import messages from './messages';
-import { loadRepos } from '../App/actions';
-import { changeUsername } from './actions';
-import { makeSelectUsername } from './selectors';
+  makeSelectOptionsLoading,
+  makeSelectOptionsSuccess,
+} from './selectors';
+import { getOptions } from './actions';
 import reducer from './reducer';
 import saga from './saga';
+import SelectGroup from './SelectGroup';
 
 const key = 'home';
 
-export function HomePage({
-  username,
-  loading,
-  error,
-  repos,
-  onSubmitForm,
-  onChangeUsername,
-}) {
-  useInjectReducer({ key, reducer });
-  useInjectSaga({ key, saga });
+const Container = styled.div`
+  display: flex;
+  margin: 0 -8px;
+`;
 
-  useEffect(() => {
-    // When initial state username is not null, submit the form to load repos
-    if (username && username.trim().length > 0) onSubmitForm();
-  }, []);
+export class HomePage extends React.Component {
+  constructor(props) {
+    super(props);
 
-  const reposListProps = {
-    loading,
-    error,
-    repos,
+    this.state = {
+      ...props.match.params,
+      options: null,
+    };
+  }
+
+  static getDerivedStateFromProps(nextProps) {
+    if (nextProps.options) {
+      return {
+        options: nextProps.options,
+      };
+    }
+
+    return null;
+  }
+
+  componentDidMount() {
+    const { service, brand, style } = this.props.match.params;
+
+    if (service && brand && style) {
+      this.setState({
+        values: { service, brand, style },
+      });
+    }
+
+    this.props.getOptions();
+  }
+
+  onOptionSelect = evt => {
+    const { target } = evt;
+
+    this.setState(
+      state => ({
+        values: {
+          ...state.values,
+          [target.name]: target.value,
+        },
+      }),
+      () => {
+        const { service, brand, style } = this.state.values;
+
+        if (
+          service &&
+          brand &&
+          style &&
+          !Map(this.state).equals(Map(this.props.match.params))
+        ) {
+          this.props.history.push(`/s-${service}/b-${brand}/st-${style}`);
+        }
+      },
+    );
   };
 
-  return (
-    <article>
-      <Helmet>
-        <title>Home Page</title>
-        <meta
-          name="description"
-          content="A React.js Boilerplate application homepage"
+  render() {
+    const { options, values } = this.state;
+    const { loading } = this.props;
+
+    return (
+      <Container>
+        <SelectGroup
+          name="service"
+          label="Выберете услугу:"
+          onOptionSelect={this.onOptionSelect}
+          isLoading={loading}
+          value={values && values.service}
+          options={options && options.services}
         />
-      </Helmet>
-      <div>
-        <CenteredSection>
-          <H2>
-            <FormattedMessage {...messages.startProjectHeader} />
-          </H2>
-          <p>
-            <FormattedMessage {...messages.startProjectMessage} />
-          </p>
-        </CenteredSection>
-        <Section>
-          <H2>
-            <FormattedMessage {...messages.trymeHeader} />
-          </H2>
-          <Form onSubmit={onSubmitForm}>
-            <label htmlFor="username">
-              <FormattedMessage {...messages.trymeMessage} />
-              <AtPrefix>
-                <FormattedMessage {...messages.trymeAtPrefix} />
-              </AtPrefix>
-              <Input
-                id="username"
-                type="text"
-                placeholder="mxstbr"
-                value={username}
-                onChange={onChangeUsername}
-              />
-            </label>
-          </Form>
-          <ReposList {...reposListProps} />
-        </Section>
-      </div>
-    </article>
-  );
+
+        <SelectGroup
+          name="brand"
+          label="Выберете марку автомобиля:"
+          onOptionSelect={this.onOptionSelect}
+          isLoading={loading}
+          value={values && values.brand}
+          options={options && options.brands}
+        />
+
+        <SelectGroup
+          name="style"
+          label="Выберете стиль автомобиля:"
+          onOptionSelect={this.onOptionSelect}
+          isLoading={loading}
+          value={values && values.style}
+          options={options && options.styles}
+        />
+      </Container>
+    );
+  }
 }
 
 HomePage.propTypes = {
   loading: PropTypes.bool,
-  error: PropTypes.oneOfType([PropTypes.object, PropTypes.bool]),
-  repos: PropTypes.oneOfType([PropTypes.array, PropTypes.bool]),
-  onSubmitForm: PropTypes.func,
-  username: PropTypes.string,
-  onChangeUsername: PropTypes.func,
+  match: PropTypes.shape({
+    params: PropTypes.shape({
+      service: PropTypes.string,
+      brand: PropTypes.string,
+      style: PropTypes.string,
+    }).isRequired,
+  }),
+  history: PropTypes.shape({
+    push: PropTypes.func.isRequired,
+  }),
+  getOptions: PropTypes.func,
 };
 
 const mapStateToProps = createStructuredSelector({
-  repos: makeSelectRepos(),
-  username: makeSelectUsername(),
-  loading: makeSelectLoading(),
-  error: makeSelectError(),
+  options: makeSelectOptionsSuccess(),
+  loading: makeSelectOptionsLoading(),
 });
 
-export function mapDispatchToProps(dispatch) {
+function mapDispatchToProps(dispatch) {
   return {
-    onChangeUsername: evt => dispatch(changeUsername(evt.target.value)),
-    onSubmitForm: evt => {
-      if (evt !== undefined && evt.preventDefault) evt.preventDefault();
-      dispatch(loadRepos());
-    },
+    getOptions: () => dispatch(getOptions()),
   };
 }
 
@@ -132,7 +155,12 @@ const withConnect = connect(
   mapDispatchToProps,
 );
 
+const withReducer = injectReducer({ key, reducer });
+const withSaga = injectSaga({ key, saga });
+
 export default compose(
+  withReducer,
+  withSaga,
   withConnect,
   memo,
 )(HomePage);
